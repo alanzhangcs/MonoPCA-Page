@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MonoPCA: Rethinking Geometric Depth in Monocular 3D Object Detection</title>
+  <meta name="description" content="MonoPCA (NeurIPS 2026): a projection-consistent reformulation of geometric depth for monocular 3D object detection.">
+  <meta property="og:title" content="MonoPCA — Rethinking Geometric Depth in Monocular 3D Object Detection">
+  <meta property="og:description" content="The classic z = f·H/h₂D recovers the front surface, not the object center. PCDepth fixes it in closed form. NeurIPS 2026.">
+  <meta property="og:image" content="static/images/teaser.png">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📦</text></svg>">
+
+  <script>
+    (function () {
+      var t = null;
+      try { t = localStorage.getItem('monopca-theme'); } catch (e) {}
+      if (!t) t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,400;0,700;0,900;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="static/css/style.css">
+</head>
+<body>
+
+  <!-- ───────── NAV ───────── -->
+  <nav class="nav" id="nav">
+    <div class="nav-inner">
+      <a class="nav-brand" href="#top">Mono<span>PCA</span></a>
+      <div class="nav-links">
+        <a href="#bias">Insight</a>
+        <a href="#method">Method</a>
+        <a href="#results">Results</a>
+        <a href="#gallery">Gallery</a>
+        <a href="#bibtex">BibTeX</a>
+      </div>
+      <button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode"><i class="fas fa-moon"></i></button>
+    </div>
+  </nav>
+
+  <!-- ───────── HERO ───────── -->
+  <header class="hero" id="top">
+    <div class="hero-grid" aria-hidden="true"></div>
+    <div class="hero-glow" aria-hidden="true"></div>
+    <div class="hero-inner">
+      <div class="venue-pill"><span class="dot"></span>NeurIPS 2026</div>
+      <p class="hero-eyebrow">MonoPCA</p>
+      <h1 class="hero-title">
+        Rethinking Geometric Depth in<br class="br-wide"> Monocular 3D Object Detection
+      </h1>
+      <p class="hero-subtitle">A Projection-Consistent Reformulation</p>
+
+      <p class="authors">
+        <span class="au"><a href="https://alanzhangcs.github.io/">Zhihao Zhang</a><sup>1</sup></span>
+        <span class="au"><a href="https://sites.google.com/view/abhinavkumar">Abhinav Kumar</a><sup>2</sup></span>
+        <span class="au"><a href="https://qhz991029.github.io/">Huaizhi Qu</a><sup>3</sup></span>
+        <span class="au"><a href="https://tianlong-chen.github.io/">Tianlong Chen</a><sup>3</sup></span>
+        <span class="au"><a href="https://cs.unc.edu/person/xiaoming-liu/">Xiaoming Liu</a><sup>1,3</sup></span>
+      </p>
+      <p class="affils">
+        <span><sup>1</sup>Michigan State University</span>
+        <span><sup>2</sup>Adobe</span>
+        <span><sup>3</sup>University of North Carolina at Chapel Hill</span>
+      </p>
+
+      <div class="hero-buttons">
+        <span class="btn is-disabled" title="Coming soon"><i class="fas fa-file-pdf"></i>Paper<small>soon</small></span>
+        <span class="btn is-disabled" title="Coming soon"><i class="fas fa-scroll"></i>arXiv<small>soon</small></span>
+        <a class="btn" href="https://github.com/alanzhangcs/MonoPCA"><i class="fab fa-github"></i>Code</a>
+        <a class="btn" href="#bibtex"><i class="fas fa-quote-right"></i>BibTeX</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- ───────── TEASER + TL;DR ───────── -->
+    <section class="teaser-wrap">
+      <figure class="card figure teaser reveal">
+        <a href="static/images/teaser.png" data-lightbox><img src="static/images/teaser.png" alt="Depth error of GeoDepth vs PCDepth, and the geometric origin of the bias" width="2000" height="513"></a>
+        <figcaption>
+          <b>(a)</b> Even with <em>ground-truth</em> <i>f</i>, <i>H</i>, and <i>h</i><sub>2D</sub>, the classic GeoDepth formula
+          incurs a depth error that grows with object size. PCDepth removes most of it.
+          <b>(b)</b> Under perspective projection, the 2D box height encodes the visible front surface, not the object center.
+        </figcaption>
+      </figure>
+
+      <div class="tldr reveal">
+        <span class="tldr-tag">TL;DR</span>
+        <p>
+          The ubiquitous geometric depth <span class="m">z = f·H / h<sub>2D</sub></span> measures the depth of an object's
+          <b>front surface</b>, not its <b>center</b>. We derive a closed-form, parameter-free correction
+          (<b>PCDepth</b>) and pair it with a distillation framework (<b>GeoAlign</b>) that sharpens the size and yaw
+          predictions the correction relies on.
+        </p>
+      </div>
+
+      <div class="stats reveal">
+        <div class="stat">
+          <div class="stat-num"><span data-count="1.44" data-prefix="+">+1.44</span></div>
+          <div class="stat-label">AP<sub>3D</sub> Mod. on the<br>KITTI leaderboard</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num"><span data-count="2.80" data-prefix="+">+2.80</span></div>
+          <div class="stat-label">AP on<br>Omni3D<sub>OUT</sub></div>
+        </div>
+        <div class="stat">
+          <div class="stat-num"><span data-count="2.32" data-prefix="+">+2.32</span></div>
+          <div class="stat-label">AP<sub>3D</sub> Mod. on<br>nuScenes val</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num"><span data-count="13" data-prefix="−" data-suffix="%" data-decimals="0">−13%</span></div>
+          <div class="stat-label">GFLOPs vs. MonoCoP<br>(71.8 → 62.5)</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────── INTERACTIVE BIAS ───────── -->
+    <section class="section" id="bias">
+      <div class="section-head reveal">
+        <p class="kicker">The key insight</p>
+        <h2>Your 2D box sees the front, not the center</h2>
+        <p class="lead">
+          For an object with thickness, the tight 2D box height <i>h</i><sub>2D</sub> is set by the box corner
+          <b>nearest to the camera</b>. Plugging it into <span class="m">f·H / h<sub>2D</sub></span> therefore returns
+          that corner's depth, <span class="m">z − Δ</span>, where Δ is the box's half-extent along the optical axis.
+          Drag the controls to see how the bias depends on size and yaw.
+        </p>
+      </div>
+
+      <div class="card playground reveal">
+        <div class="pg-stage">
+          <svg id="bev" viewBox="0 0 520 420" role="img" aria-label="Bird's-eye view of a 3D box, showing front-surface depth versus center depth"></svg>
+          <div class="pg-legend">
+            <span><i class="lg lg-geo"></i>GeoDepth: front surface</span>
+            <span><i class="lg lg-center"></i>PCDepth: object center</span>
+          </div>
+        </div>
+
+        <div class="pg-panel">
+          <div class="pg-presets" role="group" aria-label="Object class">
+            <button data-preset="ped">Pedestrian</button>
+            <button data-preset="car" class="is-active">Car</button>
+            <button data-preset="truck">Truck</button>
+          </div>
+
+          <label class="pg-slider">
+            <span><em>Yaw <i>γ</i></em><output id="o-yaw">30°</output></span>
+            <input type="range" id="s-yaw" min="0" max="180" step="1" value="30">
+          </label>
+          <label class="pg-slider">
+            <span><em>Length <i>L</i></em><output id="o-L">3.9 m</output></span>
+            <input type="range" id="s-L" min="0.4" max="12" step="0.1" value="3.9">
+          </label>
+          <label class="pg-slider">
+            <span><em>Width <i>W</i></em><output id="o-W">1.6 m</output></span>
+            <input type="range" id="s-W" min="0.4" max="3" step="0.1" value="1.6">
+          </label>
+          <label class="pg-slider">
+            <span><em>Center depth <i>z</i></em><output id="o-Z">20 m</output></span>
+            <input type="range" id="s-Z" min="8" max="60" step="1" value="20">
+          </label>
+
+          <button class="pg-play" id="pg-play"><i class="fas fa-rotate"></i><span>Spin the object</span></button>
+
+          <div class="pg-readout">
+            <div class="ro-eq" id="ro-eq"></div>
+            <div class="ro-grid">
+              <div><small>GeoDepth</small><b id="ro-geo">—</b></div>
+              <div><small>True center</small><b id="ro-z">—</b></div>
+              <div class="ro-bad"><small>Underestimation</small><b id="ro-err">—</b><small id="ro-pct"></small></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="note reveal">
+        Idealized geometry (pinhole camera, upright box, tight 2D box), as in Eq. (PCDepth) of the paper.
+        Sizes for the presets are typical values, not dataset statistics.
+      </p>
+    </section>
+
+    <!-- ───────── ABSTRACT ───────── -->
+    <section class="section section-narrow" id="abstract">
+      <div class="section-head reveal">
+        <p class="kicker">Abstract</p>
+      </div>
+      <p class="abstract reveal">
+        Monocular 3D detection (Mono3D) hinges on recovering depth from a single image, for which the geometric
+        formulation <span class="m">z ≈ f·H / h<sub>2D</sub></span> is widely adopted due to its simplicity and direct
+        grounding in projective geometry. We show that this formulation harbors a systematic, projection-induced bias:
+        substituting the 2D bounding-box height <i>h</i><sub>2D</sub> recovers the depth of an object's visible front
+        surface rather than its center, causing size-dependent underestimation that persists even under ground-truth
+        inputs. We address this front-surface bias with <b>MonoPCA</b>, a unified framework built on a
+        projection-consistent reformulation. At its core, <b>PCDepth</b> retains the measurable <i>h</i><sub>2D</sub>
+        and closes the gap to center depth through an orientation- and size-aware correction derived from perspective
+        geometry, eliminating the bias without introducing ill-posed regression targets. Because PCDepth couples depth to
+        predicted object size and orientation, attribute perception becomes essential. We therefore introduce
+        <b>GeoAlign</b>, a teacher–student framework that transfers geometric representations from Vision Foundation
+        Models into a lightweight student, strengthening attribute perception at no inference cost. Across four
+        challenging benchmarks, MonoPCA achieves state-of-the-art performance, including a +1.44% AP<sub>3D</sub> gain on
+        the KITTI leaderboard and +2.80% on Omni3D<sub>OUT</sub>.
+      </p>
+    </section>
+
+    <!-- ───────── METHOD ───────── -->
+    <section class="section" id="method">
+      <div class="section-head reveal">
+        <p class="kicker">Method</p>
+        <h2>Fix the geometry, then feed it better attributes</h2>
+      </div>
+
+      <figure class="card figure reveal">
+        <a href="static/images/framework.png" data-lightbox><img src="static/images/framework.png" alt="Overview of the MonoPCA framework" loading="lazy" width="2000" height="793"></a>
+        <figcaption>
+          <b>Overview of MonoPCA.</b> PCDepth corrects the projection bias analytically, making depth an explicit function
+          of the predicted 3D size and yaw. GeoAlign strengthens those attributes by distilling a Mixture-of-Backbone (MoB)
+          teacher into a ResNet student via Hierarchical Feature Alignment (HFA). The teacher is discarded after training.
+        </figcaption>
+      </figure>
+
+      <div class="two-col">
+        <article class="card method-card reveal">
+          <div class="mc-head"><span class="mc-num">01</span><h3>PCDepth</h3><span class="chip">parameter-free</span></div>
+          <p>
+            Regressing the center-aligned height <i>h′</i><sub>2D</sub> is ill-posed: it depends on the very depth we want.
+            Instead, PCDepth keeps the observable <i>h</i><sub>2D</sub> and adds back the optical-axis half-extent of
+            the box footprint in closed form:
+          </p>
+          <div class="eq" data-tex="z \;=\; \underbrace{f\cdot\frac{H}{h_{2D}}}_{\text{front surface}} \;+\; \underbrace{\frac{L}{2}\,|\sin\gamma| \;+\; \frac{W}{2}\,|\cos\gamma|}_{\Delta\ \text{(orientation- and size-aware)}}"></div>
+          <p class="muted">
+            Δ reduces to <i>W</i>/2 at γ = 0° and <i>L</i>/2 at γ = 90°. Because depth is now computed from predicted
+            attributes, the dedicated depth encoder and depth-guided decoder are no longer needed.
+          </p>
+        </article>
+
+        <article class="card method-card reveal">
+          <div class="mc-head"><span class="mc-num">02</span><h3>GeoAlign</h3><span class="chip">no inference cost</span></div>
+          <p>
+            PCDepth ties depth accuracy to size and yaw. GeoAlign builds a high-capacity teacher with a
+            <b>Mixture-of-Backbone</b> that fuses a ResNet pyramid with a Vision Foundation Model (EVA-CLIP) through
+            scale-wise matching and attention, then distills it into a standard ResNet-50 student.
+          </p>
+          <div class="eq" data-tex="\mathcal{L}_{\text{align}} = \sum_{s=1}^{4} \frac{1}{N_s}\sum_{i=1}^{N_s}\Bigl(1 - \cos\bigl(\hat{F}^{S}_{s,i},\, F^{T}_{s,i}\bigr)\Bigr)"></div>
+          <p class="muted">
+            Cosine alignment is invariant to the magnitude gap between a VFM-enriched teacher and a ResNet student, and
+            spans all four pyramid scales.
+          </p>
+        </article>
+      </div>
+
+      <div class="fig-row">
+        <figure class="card figure reveal">
+          <a href="static/images/geometry.png" data-lightbox><img src="static/images/geometry.png" alt="Geometric basis of PCDepth" loading="lazy" width="2000" height="1445"></a>
+          <figcaption><b>Geometric basis of PCDepth.</b> (a) Source of the front-surface bias. (b) <i>h′</i><sub>2D</sub> is depth-dependent, so regressing it is ill-posed. (c) Recovering center depth via an optical-axis correction.</figcaption>
+        </figure>
+        <figure class="card figure reveal">
+          <a href="static/images/mob.png" data-lightbox><img src="static/images/mob.png" alt="Mixture-of-Backbone details" loading="lazy" width="2000" height="1551"></a>
+          <figcaption><b>Mixture-of-Backbone.</b> MoB adaptively fuses a convolutional pyramid with a single-scale VFM branch at every scale.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- ───────── RESULTS ───────── -->
+    <section class="section" id="results">
+      <div class="section-head reveal">
+        <p class="kicker">Results</p>
+        <h2>State of the art on four benchmarks</h2>
+        <p class="lead">
+          To our knowledge, MonoPCA is the first monocular detector to reach state of the art on both the
+          KITTI leaderboard and Omni3D<sub>OUT</sub>.
+        </p>
+      </div>
+
+      <div class="card results reveal">
+        <div class="tabs" role="tablist">
+          <button role="tab" class="is-active" data-tab="t-kitti">KITTI</button>
+          <button role="tab" data-tab="t-nus">nuScenes</button>
+          <button role="tab" data-tab="t-omni">Omni3D</button>
+          <button role="tab" data-tab="t-eff">Efficiency</button>
+        </div>
+
+        <div class="tab-panel is-active" id="t-kitti" role="tabpanel">
+          <p class="tab-caption">KITTI leaderboard (test) and val, Car, IoU<sub>3D</sub> ≥ 0.7. <b>Bold</b>: best among methods without extra data; <u>underline</u>: second best.</p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr><th rowspan="2" class="l">Method</th><th rowspan="2">Extra<br>data</th><th colspan="3">Test AP<sub>3D</sub></th><th colspan="3">Test AP<sub>BEV</sub></th><th colspan="3">Val AP<sub>3D</sub></th><th colspan="3">Val AP<sub>BEV</sub></th></tr>
+                <tr><th>Easy</th><th>Mod.</th><th>Hard</th><th>Easy</th><th>Mod.</th><th>Hard</th><th>Easy</th><th>Mod.</th><th>Hard</th><th>Easy</th><th>Mod.</th><th>Hard</th></tr>
+              </thead>
+              <tbody>
+                <tr class="extra"><td class="l">OccupancyM3D</td><td>LiDAR</td><td>25.55</td><td>17.02</td><td>14.79</td><td>35.38</td><td>24.18</td><td>21.37</td><td>26.87</td><td>19.96</td><td>17.15</td><td>35.72</td><td>26.60</td><td>23.68</td></tr>
+                <tr class="extra"><td class="l">OPA-3D</td><td>Depth</td><td>24.68</td><td>17.17</td><td>14.14</td><td>32.50</td><td>23.14</td><td>20.30</td><td>24.97</td><td>19.40</td><td>16.59</td><td>33.80</td><td>25.51</td><td>22.13</td></tr>
+                <tr class="extra sep"><td class="l">MonoTAKD</td><td>LiDAR</td><td>27.91</td><td>19.43</td><td>16.51</td><td>38.75</td><td>27.76</td><td>24.14</td><td>34.36</td><td>22.61</td><td>19.88</td><td>42.86</td><td>29.41</td><td>26.47</td></tr>
+                <tr><td class="l">MonoCon</td><td>—</td><td>22.50</td><td>16.46</td><td>13.95</td><td>31.12</td><td>22.10</td><td>19.00</td><td>26.33</td><td>19.01</td><td>15.98</td><td>—</td><td>—</td><td>—</td></tr>
+                <tr><td class="l">MonoDETR</td><td>—</td><td>25.00</td><td>16.47</td><td>13.58</td><td>33.60</td><td>22.11</td><td>18.60</td><td>28.84</td><td>20.61</td><td>16.38</td><td>37.86</td><td>26.95</td><td>22.80</td></tr>
+                <tr><td class="l">MonoUNI</td><td>—</td><td>24.75</td><td>16.73</td><td>13.49</td><td>—</td><td>—</td><td>—</td><td>24.51</td><td>17.18</td><td>14.01</td><td>—</td><td>—</td><td>—</td></tr>
+                <tr><td class="l">FD3D</td><td>—</td><td>25.38</td><td>17.12</td><td>14.50</td><td>34.20</td><td>23.72</td><td>20.76</td><td>28.22</td><td>20.23</td><td>17.04</td><td>36.98</td><td>26.77</td><td>23.16</td></tr>
+                <tr><td class="l">MonoMAE</td><td>—</td><td>25.60</td><td>18.84</td><td><u>16.78</u></td><td>34.15</td><td>24.93</td><td>21.76</td><td>30.29</td><td>20.90</td><td>17.61</td><td>40.26</td><td>27.08</td><td>23.14</td></tr>
+                <tr><td class="l">MonoCD</td><td>—</td><td>25.53</td><td>16.59</td><td>14.53</td><td>33.41</td><td>22.81</td><td>19.57</td><td>26.45</td><td>19.37</td><td>16.38</td><td>34.60</td><td>24.96</td><td>21.51</td></tr>
+                <tr><td class="l">MonoDGP</td><td>—</td><td>26.35</td><td>18.72</td><td>15.97</td><td>35.24</td><td>25.23</td><td>22.02</td><td>30.76</td><td>22.34</td><td>19.02</td><td>39.40</td><td>28.20</td><td>24.42</td></tr>
+                <tr><td class="l">MonoCoP</td><td>—</td><td><u>27.54</u></td><td><u>19.11</u></td><td>16.33</td><td><u>36.77</u></td><td><u>25.57</u></td><td><u>22.62</u></td><td><u>32.06</u></td><td><u>23.98</u></td><td><u>20.64</u></td><td><u>41.92</u></td><td><u>30.75</u></td><td><u>27.06</u></td></tr>
+                <tr class="ours"><td class="l">MonoPCA (ours)</td><td>—</td><td><b>30.34</b></td><td><b>20.55</b></td><td><b>17.84</b></td><td><b>38.65</b></td><td><b>26.63</b></td><td><b>24.43</b></td><td><b>35.86</b></td><td><b>26.22</b></td><td><b>23.58</b></td><td><b>46.29</b></td><td><b>33.89</b></td><td><b>30.05</b></td></tr>
+                <tr class="gain"><td class="l">Δ vs. second best</td><td></td><td>+2.80</td><td>+1.44</td><td>+1.06</td><td>+1.88</td><td>+1.06</td><td>+1.81</td><td>+3.80</td><td>+2.24</td><td>+2.94</td><td>+4.37</td><td>+3.14</td><td>+2.99</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="tab-panel" id="t-nus" role="tabpanel">
+          <p class="tab-caption">nuScenes val (front camera), Car. <b>Bold</b>: best; <u>underline</u>: second best.</p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr><th rowspan="3" class="l">Method</th><th colspan="4">IoU<sub>3D</sub> ≥ 0.7</th><th colspan="4">IoU<sub>3D</sub> ≥ 0.5</th></tr>
+                <tr><th colspan="2">AP<sub>3D</sub></th><th colspan="2">AP<sub>BEV</sub></th><th colspan="2">AP<sub>3D</sub></th><th colspan="2">AP<sub>BEV</sub></th></tr>
+                <tr><th>Easy</th><th>Mod.</th><th>Easy</th><th>Mod.</th><th>Easy</th><th>Mod.</th><th>Easy</th><th>Mod.</th></tr>
+              </thead>
+              <tbody>
+                <tr><td class="l">GUP Net</td><td>8.50</td><td>7.40</td><td>14.21</td><td>12.81</td><td>29.03</td><td>26.16</td><td>33.42</td><td>30.23</td></tr>
+                <tr><td class="l">DEVIANT</td><td>9.69</td><td>8.33</td><td>16.28</td><td>14.36</td><td>31.47</td><td>28.22</td><td>35.61</td><td>31.93</td></tr>
+                <tr><td class="l">MonoDETR</td><td>9.53</td><td>8.19</td><td>16.39</td><td>14.41</td><td>31.81</td><td>28.35</td><td>35.70</td><td>31.96</td></tr>
+                <tr><td class="l">MonoDGP</td><td>10.04</td><td>8.78</td><td>16.55</td><td>14.53</td><td>29.56</td><td>26.17</td><td>32.67</td><td>29.44</td></tr>
+                <tr><td class="l">MonoCoP</td><td><u>10.85</u></td><td><u>9.71</u></td><td><u>17.83</u></td><td><u>15.86</u></td><td><u>33.70</u></td><td><u>29.91</u></td><td><u>37.44</u></td><td><u>34.01</u></td></tr>
+                <tr class="ours"><td class="l">MonoPCA (ours)</td><td><b>13.75</b></td><td><b>12.03</b></td><td><b>20.97</b></td><td><b>18.49</b></td><td><b>38.50</b></td><td><b>34.11</b></td><td><b>42.03</b></td><td><b>38.49</b></td></tr>
+                <tr class="gain"><td class="l">Δ vs. second best</td><td>+2.90</td><td>+2.32</td><td>+3.14</td><td>+2.63</td><td>+4.80</td><td>+4.20</td><td>+4.59</td><td>+4.48</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="tab-panel" id="t-omni" role="tabpanel">
+          <p class="tab-caption">Omni3D (AP averaged over IoU<sub>3D</sub> thresholds 0.05–0.50) alongside the KITTI leaderboard AP<sub>3D</sub>.</p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr><th rowspan="2" class="l">Method</th><th colspan="6">Omni3D<sub>OUT</sub></th><th colspan="3">KITTI leaderboard</th></tr>
+                <tr><th>AP<sup>kit</sup></th><th>AP<sup>nus</sup></th><th>AP<sup>out</sup></th><th>AP<sup>large</sup></th><th>AP<sup>small</sup></th><th>AP<sup>car</sup></th><th>Easy</th><th>Mod.</th><th>Hard</th></tr>
+              </thead>
+              <tbody>
+                <tr><td class="l">MonoDGP</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>26.35</td><td>18.72</td><td>15.97</td></tr>
+                <tr><td class="l">MonoCoP</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td><u>27.54</u></td><td><u>19.11</u></td><td><u>16.33</u></td></tr>
+                <tr><td class="l">ImVoxelNet</td><td>23.5</td><td>23.4</td><td>21.5</td><td>—</td><td>—</td><td>—</td><td>17.15</td><td>10.97</td><td>9.15</td></tr>
+                <tr><td class="l">SMOKE</td><td>25.9</td><td>20.4</td><td>20.0</td><td>—</td><td>—</td><td>—</td><td>14.03</td><td>9.76</td><td>7.84</td></tr>
+                <tr><td class="l">Cube R-CNN</td><td><u>36.0</u></td><td>32.7</td><td>31.9</td><td><u>37.6</u></td><td><u>21.8</u></td><td><u>72.9</u></td><td>23.59</td><td>15.01</td><td>12.56</td></tr>
+                <tr><td class="l">DetAny3D</td><td>35.8</td><td><u>33.9</u></td><td><u>32.2</u></td><td>—</td><td>—</td><td>—</td><td>26.89</td><td>18.67</td><td>15.48</td></tr>
+                <tr class="ours"><td class="l">MonoPCA (ours)</td><td><b>38.1</b></td><td><b>37.0</b></td><td><b>35.0</b></td><td><b>38.8</b></td><td><b>25.4</b></td><td><b>77.0</b></td><td><b>30.34</b></td><td><b>20.55</b></td><td><b>17.84</b></td></tr>
+                <tr class="gain"><td class="l">Δ vs. second best</td><td>+2.1</td><td>+3.1</td><td>+2.8</td><td>+1.2</td><td>+3.6</td><td>+4.1</td><td>+2.80</td><td>+1.44</td><td>+1.51</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="tab-panel" id="t-eff" role="tabpanel">
+          <p class="tab-caption">KITTI leaderboard AP<sub>3D</sub> Mod. vs. model cost. PCDepth is parameter-free and the GeoAlign teacher is discarded after training.</p>
+          <div class="eff">
+            <div class="eff-row"><span class="eff-name">MonoDGP</span><span class="eff-bar"><i style="--w:18.72"></i></span><span class="eff-ap">18.72</span><span class="eff-cost">38.9M · 69.0 GFLOPs</span></div>
+            <div class="eff-row"><span class="eff-name">MonoCoP</span><span class="eff-bar"><i style="--w:19.11"></i></span><span class="eff-ap">19.11</span><span class="eff-cost">42.5M · 71.8 GFLOPs</span></div>
+            <div class="eff-row is-ours"><span class="eff-name">MonoPCA</span><span class="eff-bar"><i style="--w:20.55"></i></span><span class="eff-ap">20.55</span><span class="eff-cost">42.0M · <b>62.5 GFLOPs</b></span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="fig-row fig-row-2">
+        <figure class="card figure reveal">
+          <a href="static/images/radar.png" data-lightbox><img src="static/images/radar.png" alt="Radar chart comparing MonoPCA with previous state of the art" loading="lazy" width="2000" height="1813"></a>
+          <figcaption><b>Across the board.</b> MonoPCA vs. the previous best on each benchmark.</figcaption>
+        </figure>
+        <div class="stack">
+          <figure class="card figure reveal">
+            <a href="static/images/generality.png" data-lightbox><img src="static/images/generality.png" alt="PCDepth improves MonoDETR, MonoDGP and MonoCoP" loading="lazy" width="2000" height="1241"></a>
+            <figcaption><b>Plug-and-play.</b> Swapping only the depth head for PCDepth improves MonoDETR, MonoDGP, and MonoCoP by +1.54, +1.37, and +1.09 AP<sub>3D</sub> on KITTI val.</figcaption>
+          </figure>
+        </div>
+      </div>
+
+      <div class="card ablation reveal">
+        <div class="abl-head">
+          <h3>Which depth formulation?</h3>
+          <p>KITTI val, AP<sub>3D</sub> Mod. (IoU<sub>3D</sub> ≥ 0.7), full MonoPCA with only the depth formulation changed.</p>
+        </div>
+        <div class="bars" data-min="23" data-max="26.6">
+          <div class="bar-row"><span class="bar-name">Direct regression</span><span class="bar"><i data-v="23.82"></i></span><span class="bar-v">23.82</span></div>
+          <div class="bar-row"><span class="bar-name">GeoDepth with <i>h′</i><sub>2D</sub></span><span class="bar"><i data-v="24.18"></i></span><span class="bar-v">24.18</span></div>
+          <div class="bar-row"><span class="bar-name">GeoDepth with <i>h</i><sub>2D</sub></span><span class="bar"><i data-v="24.73"></i></span><span class="bar-v">24.73</span></div>
+          <div class="bar-row is-ours"><span class="bar-name">PCDepth (ours)</span><span class="bar"><i data-v="26.22"></i></span><span class="bar-v">26.22</span></div>
+        </div>
+        <p class="muted">
+          Regressing the unobservable <i>h′</i><sub>2D</sub> hurts; keeping the observable <i>h</i><sub>2D</sub> and
+          correcting it analytically gives +1.49 over GeoDepth.
+        </p>
+      </div>
+
+      <figure class="card figure reveal">
+        <a href="static/images/attribute.png" data-lightbox><img src="static/images/attribute.png" alt="Per-distance size, orientation and depth errors" loading="lazy" width="2000" height="541"></a>
+        <figcaption><b>GeoAlign lowers the errors PCDepth depends on.</b> Per-distance size, orientation, and depth errors on KITTI val. Better attributes propagate directly into better depth.</figcaption>
+      </figure>
+    </section>
+
+    <!-- ───────── GALLERY ───────── -->
+    <section class="section" id="gallery">
+      <div class="section-head reveal">
+        <p class="kicker">Qualitative results</p>
+        <h2>See it on the road</h2>
+      </div>
+
+      <div class="card gallery reveal">
+        <div class="tabs" role="tablist">
+          <button role="tab" class="is-active" data-tab="g-omni">Omni3D vs. DetAny3D</button>
+          <button role="tab" data-tab="g-kitti">KITTI</button>
+          <button role="tab" data-tab="g-nus">nuScenes</button>
+        </div>
+        <div class="tab-panel is-active" id="g-omni" role="tabpanel">
+          <a href="static/images/qual_omni3d.jpg" data-lightbox><img src="static/images/qual_omni3d.jpg" alt="Qualitative comparison with DetAny3D on Omni3D" loading="lazy" width="2000" height="473"></a>
+          <p class="tab-caption">Top: DetAny3D. Bottom: MonoPCA. Image-plane predictions (left) and bird's-eye view with a 1 m grid (right). MonoPCA is more accurate on distant and small objects such as pedestrians.</p>
+        </div>
+        <div class="tab-panel" id="g-kitti" role="tabpanel">
+          <div class="gal-grid">
+            <a href="static/images/qual_kitti_1.jpg" data-lightbox><img src="static/images/qual_kitti_1.jpg" alt="MonoPCA predictions on KITTI (set 1)" loading="lazy" width="1358" height="2000"></a>
+            <a href="static/images/qual_kitti_2.jpg" data-lightbox><img src="static/images/qual_kitti_2.jpg" alt="MonoPCA predictions on KITTI (set 2)" loading="lazy" width="1363" height="2000"></a>
+          </div>
+          <p class="tab-caption">MonoPCA predictions on KITTI, with bird's-eye views. Click to enlarge.</p>
+        </div>
+        <div class="tab-panel" id="g-nus" role="tabpanel">
+          <div class="gal-grid">
+            <a href="static/images/qual_nuscenes_1.jpg" data-lightbox><img src="static/images/qual_nuscenes_1.jpg" alt="MonoPCA predictions on nuScenes (set 1)" loading="lazy" width="1104" height="2000"></a>
+            <a href="static/images/qual_nuscenes_2.jpg" data-lightbox><img src="static/images/qual_nuscenes_2.jpg" alt="MonoPCA predictions on nuScenes (set 2)" loading="lazy" width="1108" height="2000"></a>
+          </div>
+          <p class="tab-caption">MonoPCA predictions on nuScenes, with bird's-eye views. Click to enlarge.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────── BIBTEX ───────── -->
+    <section class="section section-narrow" id="bibtex">
+      <div class="section-head reveal">
+        <p class="kicker">Citation</p>
+        <h2>BibTeX</h2>
+      </div>
+      <div class="bib reveal">
+        <button class="copy" id="copy-bib"><i class="far fa-copy"></i><span>Copy</span></button>
+<pre id="bib-text">@inproceedings{zhang2026rethinking,
+  title     = {Rethinking Geometric Depth in Monocular 3D Object Detection:
+               A Projection-Consistent Reformulation},
+  author    = {Zhang, Zhihao and Kumar, Abhinav and Qu, Huaizhi and
+               Chen, Tianlong and Liu, Xiaoming},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year      = {2026}
+}</pre>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>© 2026 Zhihao Zhang · <a href="https://alanzhangcs.github.io/">alanzhangcs.github.io</a></p>
+  </footer>
+
+  <!-- Lightbox -->
+  <div id="lightbox" hidden>
+    <div class="lb-backdrop"></div>
+    <img id="lb-img" alt="">
+    <button id="lb-close" aria-label="Close"><i class="fas fa-xmark"></i></button>
+  </div>
+
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <script defer src="static/js/main.js"></script>
+</body>
+</html>
