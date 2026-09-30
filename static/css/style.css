@@ -207,6 +207,7 @@ sub, sup { line-height: 0; }
 }
 .hero-inner { max-width: 940px; margin: 0 auto; }
 .venue-pill {
+  margin-top: 22px;
   display: inline-flex;
   align-items: center;
   gap: 9px;
@@ -231,7 +232,7 @@ sub, sup { line-height: 0; }
   100% { box-shadow: 0 0 0 0 rgba(75, 156, 211, 0); }
 }
 .hero-eyebrow {
-  margin: 26px 0 6px;
+  margin: 0 0 6px;
   font-size: 15px;
   font-weight: 900;
   letter-spacing: 0.32em;
