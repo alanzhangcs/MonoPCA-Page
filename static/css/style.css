@@ -706,14 +706,14 @@ td u { text-decoration-color: var(--text-4); text-underline-offset: 3px; }
   margin: 0;
   padding: 22px 24px;
   border-radius: var(--radius);
-  background: #13294b;
-  color: #dbe8f5;
+  background: var(--bg-soft);
+  color: var(--text-2);
   font-family: "JetBrains Mono", monospace;
   font-size: 13.5px;
   line-height: 1.7;
   overflow-x: auto;
-  box-shadow: var(--shadow);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--carolina);
 }
 .copy {
   position: absolute;
@@ -721,17 +721,17 @@ td u { text-decoration-color: var(--text-4); text-underline-offset: 3px; }
   display: inline-flex; align-items: center; gap: 7px;
   padding: 6px 12px;
   border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: rgba(255, 255, 255, 0.06);
-  color: #d6def5;
+  border: 1px solid var(--border-2);
+  background: var(--card);
+  color: var(--text-2);
   font: inherit;
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.2s var(--ease);
 }
-.copy:hover { background: rgba(255, 255, 255, 0.14); }
-.copy.is-done { color: #5eead4; border-color: rgba(94, 234, 212, 0.5); }
+.copy:hover { color: var(--blue); border-color: var(--blue); background: var(--blue-soft); }
+.copy.is-done { color: var(--teal); border-color: var(--teal); }
 
 /* ─────────── Footer ─────────── */
 .footer {
